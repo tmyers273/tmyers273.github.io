@@ -25,7 +25,7 @@ export const base = (
   <link rel="icon" href="/favicon.png" type="image/png">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="canonical" href="${site_url}${path}">
-  <link rel="alternate" type="application/rss+xml" title="matklad" href="${site_url}/feed.xml">
+  <link rel="alternate" type="application/rss+xml" title="tmyers273" href="${site_url}/feed.xml">
   <style>
   @font-face {
     font-family: 'Open Sans'; src: url('/css/OpenSans-300-Normal.woff2') format('woff2');
@@ -85,7 +85,7 @@ export const base = (
 <body>
   <header>
     <nav>
-      <a class="title" href="/">matklad</a>
+      <a class="title" href="/">tmyers273</a>
       <a href="/about.html">About</a>
       <a href="/links.html">Links</a>
       <a href="/blogroll.html">Blogroll</a>
@@ -98,7 +98,7 @@ export const base = (
 
   <footer>
     <p>
-      <a href="https://github.com/matklad/matklad.github.io/edit/master${src}">
+      <a href="https://github.com/tmyers273/blog3/edit/master${src}">
         <svg class="icon"><use href="/assets/icons.svg#edit"/></svg>
         Fix typo
       </a>
@@ -106,13 +106,9 @@ export const base = (
         <svg class="icon"><use href="/assets/icons.svg#rss"/></svg>
         Subscribe
       </a>
-      <a href="mailto:aleksey.kladov+blog@gmail.com">
-        <svg class="icon"><use href="/assets/icons.svg#email"/></svg>
-        Get in touch
-      </a>
-      <a href="https://github.com/matklad">
+      <a href="https://github.com/tmyers273">
         <svg class="icon"><use href="/assets/icons.svg#github"/></svg>
-        matklad
+        tmyers273
       </a>
     </p>
   </footer>
@@ -121,12 +117,12 @@ export const base = (
 </html>
 `;
 
-const blurb = "Yet another programming blog by Alex Kladov aka matklad.";
+const blurb = "Yet another programming blog by Tom Myers aka tmyers273.";
 
 export function page(name: string, content: HtmlString) {
   return base({
     path: `/${name}`,
-    title: "matklad",
+    title: "tmyers273",
     description: blurb,
     src: `/content/${name}.dj`,
     extra_css: name === "resume" ? "resume.css" : undefined,
@@ -144,7 +140,7 @@ export const post_list = (posts: Post[]): HtmlString => {
 
   return base({
     path: "",
-    title: "matklad",
+    title: "tmyers273",
     description: blurb,
     src: "/src/templates.ts",
     content: html`<ul class="post-list">${list_items}</ul>`,
@@ -180,7 +176,7 @@ export const blogroll_list = (posts: blogroll.FeedEntry[]): HtmlString => {
 
   return base({
     path: "",
-    title: "matklad",
+    title: "tmyers273",
     description: blurb,
     src: "/src/templates.ts",
     content: html`<ul class="post-list">${list_items}</ul>`,

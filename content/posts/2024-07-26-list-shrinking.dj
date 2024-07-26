@@ -1,0 +1,238 @@
+# List Shrinking
+
+[Code Link](https://github.com/tmyers273/shrink)
+
+I've been working on a conversion process, where we take a large struct `A` and, depending on
+various values within it, convert it to either `B`, `C`, or `D`.
+
+This data comes from an external source and the documentation leaves a lot to be desired, with
+missing enum variants, incorrect type fields, incorrect nullability, etc.
+
+Due to the inaccurate documentation, we lean heavily on our test suite.
+
+There are a large number of items (hundreds of millions) that we deal with in this conversion
+process. While we certainly could pull all those items and run them in our tests, I thought
+there might be a better way. One that would minimize the pain of running the tests while
+preserving the same level of confidence.
+
+What if we could throw away all the items that are not uniquely interesting? Or are, if you
+squint your eyes, near-duplicates of other items?
+
+More concretely, imagine the following struct
+
+```rust
+struct MyStruct {
+    a: u8,
+    b: String,
+}
+```
+
+These two records are, of course, not equal.
+
+```rust
+let a = MyStruct { a: 1, b: "hello".to_string() };
+let b = MyStruct { a: 2, b: "hello world".to_string() };
+```
+
+But, in the conversion process, we wanted to treat them as equal. They both contain a positive,
+non-max integer and a non-empty, non-whitespace string. If one of them converts successfully,
+then the other will as well.
+
+What I really was after was a way extract just the meaningfully unique items. So what exactly
+is a meaningfully unique item?
+
+```rust
+// A positive int is one type
+let a = MyStruct { a: 1, b: "hello".to_string() };
+
+// 0 is another interesting one
+let b = MyStruct { a: 0, b: "hello world".to_string() };
+
+// Along with the max value
+let c = MyStruct { a: u8::MAX, b: "hello world".to_string() };
+
+// Or an empty string
+let c = MyStruct { a: 1, b: "".to_string() };
+
+// Or a string of just whitespace
+let c = MyStruct { a: 1, b: "   ".to_string() };
+```
+
+That allows us to start to pencil in some basic rules and some enums to represent them.
+
+## Strings
+
+Perhaps the simplest case. There are only a few interesting strings that we care about:
+
+```rust
+enum StringClassification {
+    Empty,
+    Whitespace,
+    NonEmpty,
+}
+```
+
+## Integers
+
+Integers have a few more options.
+
+```rust
+enum SignedIntClassification {
+    Min,
+    Negative,
+    Zero,
+    Positive,
+    Max,
+}
+
+enum UnsignedIntClassification {
+    Zero,
+    Positive,
+    Max,
+}
+```
+
+## Tying it together
+
+Let's introduce a trait.
+
+```rust
+trait Classify {
+    type Output: Hash;
+
+    fn classify(&self) -> Self::Output;
+}
+
+impl Classify for u8 {
+    type Output = UnsignedIntClassification;
+
+    fn classify(&self) -> Self::Output {
+        match self {
+            0 => UnsignedIntClassification::Zero,
+            u8::MAX => UnsignedIntClassification::Max,
+            _ => UnsignedIntClassification::Positive,
+        }
+    }
+}
+
+impl Classify for String {
+    type Output = StringClassification;
+
+    fn classify(&self) -> Self::Output {
+        match self.as_str() {
+            "" => StringClassification::Empty,
+            s if s.chars().all(char::is_whitespace) => StringClassification::Whitespace,
+            _ => StringClassification::NonEmpty,
+        }
+    }
+}
+```
+
+That let's us classify some primitives, which is a start. But how do we classify the structs
+we introduced earlier?
+
+```rust
+let a = MyStruct { a: 1, b: "hello".to_string() };
+let b = MyStruct { a: 2, b: "hello world".to_string() };
+```
+
+While we certainly could return a tuple of
+
+`(UnsignedIntClassification, StringClassification)`
+
+that approach doesn't scale well. The large struct `A` has 20 some fields and, more importantly,
+has nested fields, for a total of 60+ fields.
+
+If we make sure that our base enum classification types implement `Hash`, we can use that to
+hash the classifications of the fields, giving us some really nice compositional properties.
+
+```rust
+impl Classify for MyStruct {
+    type Output = u64;
+
+    fn classify(&self) -> Self::Output {
+        let mut hasher = DefaultHasher::new();
+        &self.a.classify().hash(&mut hasher);
+        &self.b.classify().hash(&mut hasher);
+        hasher.finish()
+    }
+}
+```
+
+## More complex structs
+
+That gets things working for our simple example, but what about something with some more
+complexity? Perhaps a struct like
+
+```rust
+struct ComplexStruct {
+    a: Option<u8>,
+    b: Vec<String>,
+}
+```
+
+### Options
+
+Options can be thought of as just adding an additional `None` variant to the classification.
+
+### Vecs, arrays, and slices
+
+This is where things get a bit more interesting. We want a classification that is order-independent
+and doesn't care about duplicates.
+
+We can accomplish that be classifying each element. Then, removing any duplicates and sorting the
+remaining elements.
+
+This allows something like the following to be true:
+
+```rust
+let a = vec![1u8, 0];
+let b = vec![0u8, 5, 6];
+assert_eq!(a.classify(), b.classify());
+```
+
+A BTreeSet does the heavy lifting for us here.
+
+```rust
+impl<T: Classify> Classify for Vec<T>
+where
+    T::Output: Hash + Eq + Ord,
+{
+    type Output = u64;
+
+    fn classify(&self) -> Self::Output {
+        let unique_classifications = BTreeSet::default();
+        for item in &self {
+            unique_classifications.insert(item.classify());
+        }
+
+        let mut hasher = DefaultHasher::new();
+        for classification in unique_classifications {
+            classification.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+}
+```
+
+But, it does fail to capture an important property of the vec. We really would like to capture
+whether the vec:
+
+- is empty,
+- contains a single element, or
+- contains multiple elements
+
+That remains an item for a different day.
+
+## Results
+
+We have a few different datasets in which we employ this pattern and the results have been
+very successful. We are able to keep a gzipped version of the dataset in our repository to
+use in our tests.
+
+| Dataset         | Meaningfully Unique Items | Total Items    |
+|-----------------|---------------------------:|----------------:|
+| First   | 620                       | 40,000        |
+| Second  | 172                       | 50,000        |
+| Third   | 681                       | 700,000       |
+| Fourth  | 3,876                     | 175,000,000   |
