@@ -1,0 +1,159 @@
+# My Favorite Test Suite
+
+**tl;dr: Differential testing + determistic fuzzing = ❤️**
+
+My favorite test suite, by a very large margin, comes from a project I was working
+on a year or so ago. It was a in-house columnar database, with some clever optimizations
+to help speed up our primary queries (OLAP-type queries across 3 different billion+ row tables joined).
+
+## Background
+
+Columnar databases use a storage layer logically equivalent to a `Vec<T>` for each column. 
+
+Physically, these vectors split into smaller chunks, each capped at 8mb in our case.
+
+Our database allowed two logical mutation operations - inserts and updates. 
+Deletes were not supported.
+
+Inserts have two internal paths:  
+
+- append inserts, where the primary key is greater than the highest current primary key
+- out-of-order inserts, where the primary key is less than the highest current primary key
+
+Leaving us with a total of 3 possible operations:
+
+- update
+- append
+- out-of-order insert
+
+## Operation Examples
+
+Consider two chunks representing a column of ints. Instead of the normal 8mb
+cap per chunk, let's assume we have a cap of 2 items.
+
+The logical represenation would be just a flat `Vec<int64>`, while the physical
+represenation would be a vec of vecs (`Vec<Vec<int64>>`) showing the items in each
+chunk.
+
+```
+Logical:  [10, 20, 30, 40]
+Physical: [10, 20][30, 40]
+```
+
+For updates, we load the relevant chunk(s), modify the value, and resave:
+
+
+```
+Operation: Update the 2nd item from 20 to 25
+Logical:  [10, 20, 30, 40] -> [10, 25, 30, 40]
+Physical: [10, 20][30, 40] -> [10, 25][30, 40]
+```
+
+Appends create new chunks when needed:
+
+```
+Operation: Append 50
+Logical:  [10, 25, 30, 40] -> [10, 25, 30, 40, 50]
+Physical: [10, 25][30, 40] -> [10, 25][30, 40][50]
+```
+
+Another append:
+
+```
+Operation: Append 60
+Logical:  [10, 25, 30, 40, 50] -> [10, 25, 30, 40, 50, 60]
+Physical: [10, 25][30, 40][50] -> [10, 25][30, 40][50, 60]
+```
+
+Out-of-order inserts require splicing and shifting values:
+
+
+```
+Operation: Insert 5 at position 0
+Logical:  [10, 25, 30, 40, 50] -> [ 5, 10, 25, 30, 40, 50, 60]
+Physical: [10, 25][30, 40][50] -> [ 5, 10][25, 30][40, 50][60]
+```
+
+Inserting at position 0 is worst-case, requiring rewriting all chunks.
+
+## Differential Testing
+
+It quickly became clear that maintaining the logical representation made for an easy way to
+test, as we could compare the results from our chunked approach, to those of a known 
+correct datastructure's like the humble `Vec`.
+
+If we had a `Vec<Op>`, then we should be able to iterate through our chunked representation
+and a `Vec`, comparing the results after each step to ensure that they are the same.
+
+```rust
+pub enum Op<T> {
+    /// The new values
+    Append(Vec<T>),
+    /// The indexes and new values
+    Splice(Vec<(usize, T)>),
+    /// The indexes and updated values
+    Update(Vec<(usize, T)>),
+}
+
+let ops: Vec<Op<i64>> = generate_random_ops();
+
+let mut expected = Vec::<i64>::new();
+let mut actual = ChunkedColumn::<i64>::new();
+
+for op in ops {
+    expected.apply(op);
+    actual.apply(op);
+
+    assert_eq!(expected, actual.to_vec());
+}
+
+```
+
+## Determistic fuzzing
+
+Fuzzing allowed us to test a _lot_ more edge cases than the unit tests we
+had written prior, which we thought were extensive!
+
+By using a given seed, it allowed us t oeasily reproduce any failing test
+cases as new unit tests.
+
+
+```rust
+const ITERATIONS: usize = 100_000;
+
+fn check(seed: u64) {
+    // Similar to above, but we pass a PRNG in to our random op generator
+    let mut rng = StdRng::seed_from_u64(seed);
+    let ops: Vec<Op<i64>> = generate_random_ops(&mut rng);
+
+    let mut expected = Vec::<i64>::new();
+    let mut actual = ChunkedColumn::<i64>::new();
+
+    for op in ops {
+        expected.apply(op);
+        actual.apply(op);
+
+        // And if something fails, we print the seed, allowing us to
+        // quickly and easily reproduce the failing pattern
+        assert_eq!(expected, actual.to_vec(), "[seed:{seed}] Mismatch detected: {:#?} vs {:?}", expected, actual);
+    }
+}
+
+for _ in 0..ITERATIONS {
+    // Generate a completely random seed for each iteration
+    let seed: u64 = rand::random();
+
+    // Then use that to generate the random ops
+    check(seed);
+}
+
+```
+
+## In closing
+
+The combination of differential testing and determistic fuzzing gave us an
+incredibly high degree of confidence that things were working as they should be.
+
+In the first few runs of the fuzzer, when we were still finding new bugs, it gave
+us a wonderfully simple way to reproduce those failing test cases as new unit tests.
+
