@@ -323,4 +323,7 @@ seeing. The inability to pin a cpu lead to some very high max values though!
 
 A non-AWS instance where we could turn off SMI would have helped to mitigate some of the larger max latencies we were seeing.
 
+I wonder if that also would have let us close the gap between our p99/p50 ratio and Xelera's. They had a _very_ tight (10 nanos!)
+difference between the two.
+
 ![Progression](/assets/small_progression_curves_full.png)
