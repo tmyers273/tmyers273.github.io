@@ -1,0 +1,228 @@
+#tree-flatten-demo {
+  margin: 1.2rem auto;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 0.75rem;
+  width: min(1200px, calc(100vw - 2rem));
+  max-width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.96rem;
+  line-height: 1.4;
+}
+
+#tree-flatten-demo h3 {
+  font-size: 1.12rem;
+  margin: 0 0 0.45rem;
+}
+
+#tree-flatten-demo h4 {
+  font-size: 0.98rem;
+}
+
+#tree-flatten-demo h5 {
+  font-size: 0.9rem;
+}
+
+#tree-flatten-demo .tfd-controls {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+#tree-flatten-demo label {
+  display: grid;
+  gap: 0.2rem;
+}
+
+#tree-flatten-demo input[type="range"] {
+  width: 100%;
+}
+
+#tree-flatten-demo .tfd-summary {
+  margin-top: 0.8rem;
+  padding: 0.7rem;
+  border: 1px solid #ececec;
+  background: #fafafa;
+}
+
+#tree-flatten-demo .tfd-player {
+  margin-top: 0.8rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#tree-flatten-demo .tfd-layout {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+#tree-flatten-demo .tfd-right-column {
+  display: grid;
+  gap: 0.85rem;
+}
+
+#tree-flatten-demo .tfd-player button {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 0.45rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+#tree-flatten-demo .tfd-player button:hover {
+  background: #f3f4f6;
+}
+
+#tree-flatten-demo .tfd-step-label {
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: #374151;
+}
+
+#tree-flatten-demo .tfd-columns {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+#tree-flatten-demo .tfd-arrays {
+  border: 1px solid #ececec;
+  border-radius: 0.6rem;
+  padding: 0.7rem;
+  background: #fcfcfd;
+}
+
+#tree-flatten-demo .tfd-arrays h4 {
+  margin: 0 0 0.55rem;
+}
+
+#tree-flatten-demo .tfd-array-row {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+#tree-flatten-demo .tfd-array-name {
+  font-family: monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+#tree-flatten-demo .tfd-array-values {
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: #374151;
+}
+
+#tree-flatten-demo .tfd-array-token {
+  color: inherit;
+}
+
+#tree-flatten-demo .tfd-array-token-active {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+#tree-flatten-demo .tfd-walkthrough {
+  border: 1px solid #ececec;
+  border-radius: 0.6rem;
+  padding: 0.7rem;
+}
+
+#tree-flatten-demo .tfd-walkthrough h4 {
+  margin: 0 0 0.45rem;
+}
+
+#tree-flatten-demo .tfd-walkthrough-code {
+  margin: 0;
+  padding: 0.55rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #f9fafb;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+#tree-flatten-demo .tfd-columns h4 {
+  margin-bottom: 0.3rem;
+}
+
+#tree-flatten-demo .tfd-tree-card {
+  border: 1px solid #ececec;
+  padding: 0.95rem;
+  border-radius: 0.6rem;
+  background: #fff;
+}
+
+#tree-flatten-demo .tfd-ascii-tree {
+  margin: 0.45rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #f9fafb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+#tree-flatten-demo .tfd-ascii-line {
+  color: #374151;
+}
+
+#tree-flatten-demo .tfd-ascii-taken {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+#tree-flatten-demo .tfd-ascii-active {
+  color: #b45309;
+  font-weight: 700;
+}
+
+#tree-flatten-demo .tfd-ascii-terminal {
+  color: #15803d;
+  font-weight: 700;
+}
+
+#tree-flatten-demo .tfd-ascii-muted {
+  color: #9ca3af;
+}
+
+#tree-flatten-demo .tfd-note {
+  margin-top: 0.6rem;
+  color: #444;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 980px) {
+  #tree-flatten-demo {
+    width: calc(100vw - 1rem);
+  }
+
+  #tree-flatten-demo .tfd-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+#tree-flatten-demo .tfd-legend {
+  margin-top: 0.8rem;
+  display: flex;
+  column-gap: 0.8rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+#tree-flatten-demo .tfd-legend strong {
+  color: #000;
+}
