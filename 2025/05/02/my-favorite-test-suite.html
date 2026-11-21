@@ -1,0 +1,289 @@
+
+<!DOCTYPE html>
+<html lang='en-US'>
+<head>
+  <meta charset='utf-8'>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Favorite Test Suite</title>
+  <meta name="description" content="tl;dr: Differential testing + determistic fuzzing = ❤️">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://matklad.github.io/2025/05/02/my-favorite-test-suite.html">
+  <link rel="alternate" type="application/rss+xml" title="tmyers273" href="https://matklad.github.io/feed.xml">
+  <style>
+  @font-face {
+    font-family: 'Open Sans'; src: url('/css/OpenSans-300-Normal.woff2') format('woff2');
+    font-weight: 300; font-style: normal;
+  }
+  @font-face {
+    font-family: 'JetBrains Mono'; src: url('/css/JetBrainsMono-400-Normal.woff2') format('woff2');
+    font-weight: 400; font-style: normal;
+  }
+  @font-face {
+    font-family: 'JetBrains Mono'; src: url('/css/JetBrainsMono-700-Normal.woff2') format('woff2');
+    font-weight: 700; font-style: normal;
+  }
+  @font-face {
+    font-family: 'EB Garamond'; src: url('/css/EBGaramond-400-Normal.woff2') format('woff2');
+    font-weight: 400; font-style: normal;
+  }
+  @font-face {
+    font-family: 'EB Garamond'; src: url('/css/EBGaramond-400-Italic.woff2') format('woff2');
+    font-weight: 400; font-style: italic;
+  }
+  @font-face {
+    font-family: 'EB Garamond'; src: url('/css/EBGaramond-700-Normal.woff2') format('woff2');
+    font-weight: 700; font-style: normal;
+  }
+  @font-face {
+    font-family: 'EB Garamond'; src: url('/css/EBGaramond-700-Italic.woff2') format('woff2');
+    font-weight: 700; font-style: italic;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; margin-block-start: 0; margin-block-end: 0; }
+
+  body {
+    max-width: 80ch;
+    padding: 2ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  header { margin-bottom: 2rem; }
+  header > nav { display: flex; column-gap: 2ch; align-items: baseline; flex-wrap: wrap; }
+  header a { font-style: normal; color: rgba(0, 0, 0, .8); text-decoration: none; }
+  header a:hover { color: rgba(0, 0, 0, .8); text-decoration: underline; }
+  header .title { font-size: 1.25em; flex-grow: 2; }
+
+  footer { margin-top: 2rem; }
+  footer > p { display: flex; column-gap: 2ch; justify-content: center; flex-wrap: wrap; }
+  footer a { color: rgba(0, 0, 0, .8); text-decoration: none; white-space: nowrap; }
+  footer i { vertical-align: middle; color: rgba(0, 0, 0, .8) }
+
+  </style>
+
+  <link rel="stylesheet" href="/css/main.css">
+  
+</head>
+
+<body>
+  <header>
+    <nav>
+      <a class="title" href="/">tmyers273</a>
+      <a href="/about.html">About</a>
+      <a href="/links.html">Links</a>
+      <a href="/blogroll.html">Blogroll</a>
+    </nav>
+  </header>
+
+  <main>
+  <article >
+
+<h1><span>My Favorite Test Suite</span> <time class="meta" datetime="2025-05-02">May 2, 2025</time></h1>
+<p><strong><strong><span>tl;dr: Differential testing + determistic fuzzing = ❤️</span></strong></strong></p>
+<p><span>My favorite test suite, by a very large margin, comes from a project I was working</span>
+<span>on a year or so ago. It was a in-house columnar database, with some clever optimizations</span>
+<span>to help speed up our primary queries (OLAP-type queries across 3 different billion+ row tables joined).</span></p>
+<section id="Background">
+
+    <h2>
+    <a href="#Background"><span>Background</span> </a>
+    </h2>
+<p><span>Columnar databases use a storage layer logically equivalent to a </span><code>Vec&lt;T&gt;</code><span> for each column.</span></p>
+<p><span>Physically, these vectors split into smaller chunks, each capped at 8mb in our case.</span></p>
+<p><span>Our database allowed two logical mutation operations - inserts and updates. </span>
+<span>Deletes were not supported.</span></p>
+<p><span>Inserts have two internal paths:</span></p>
+<ul>
+<li>
+<span>append inserts, where the primary key is greater than the highest current primary key</span>
+</li>
+<li>
+<span>out-of-order inserts, where the primary key is less than the highest current primary key</span>
+</li>
+</ul>
+<p><span>Leaving us with a total of 3 possible operations:</span></p>
+<ul>
+<li>
+<span>update</span>
+</li>
+<li>
+<span>append</span>
+</li>
+<li>
+<span>out-of-order insert</span>
+</li>
+</ul>
+</section>
+<section id="Operation-Examples">
+
+    <h2>
+    <a href="#Operation-Examples"><span>Operation Examples</span> </a>
+    </h2>
+<p><span>Consider two chunks representing a column of ints. Instead of the normal 8mb</span>
+<span>cap per chunk, let</span>&rsquo;<span>s assume we have a cap of 2 items.</span></p>
+<p><span>The logical represenation would be just a flat </span><code>Vec&lt;int64&gt;</code><span>, while the physical</span>
+<span>represenation would be a vec of vecs (</span><code>Vec&lt;Vec&lt;int64&gt;&gt;</code><span>) showing the items in each</span>
+<span>chunk.</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line">Logical:  [10, 20, 30, 40]</span>
+<span class="line">Physical: [10, 20][30, 40]</span></code></pre>
+
+</figure>
+<p><span>For updates, we load the relevant chunk(s), modify the value, and resave:</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line">Operation: Update the 2nd item from 20 to 25</span>
+<span class="line">Logical:  [10, 20, 30, 40] -&gt; [10, 25, 30, 40]</span>
+<span class="line">Physical: [10, 20][30, 40] -&gt; [10, 25][30, 40]</span></code></pre>
+
+</figure>
+<p><span>Appends create new chunks when needed:</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line">Operation: Append 50</span>
+<span class="line">Logical:  [10, 25, 30, 40] -&gt; [10, 25, 30, 40, 50]</span>
+<span class="line">Physical: [10, 25][30, 40] -&gt; [10, 25][30, 40][50]</span></code></pre>
+
+</figure>
+<p><span>Another append:</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line">Operation: Append 60</span>
+<span class="line">Logical:  [10, 25, 30, 40, 50] -&gt; [10, 25, 30, 40, 50, 60]</span>
+<span class="line">Physical: [10, 25][30, 40][50] -&gt; [10, 25][30, 40][50, 60]</span></code></pre>
+
+</figure>
+<p><span>Out-of-order inserts require splicing and shifting values:</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line">Operation: Insert 5 at position 0</span>
+<span class="line">Logical:  [10, 25, 30, 40, 50] -&gt; [ 5, 10, 25, 30, 40, 50, 60]</span>
+<span class="line">Physical: [10, 25][30, 40][50] -&gt; [ 5, 10][25, 30][40, 50][60]</span></code></pre>
+
+</figure>
+<p><span>Inserting at position 0 is worst-case, requiring rewriting all chunks.</span></p>
+</section>
+<section id="Differential-Testing">
+
+    <h2>
+    <a href="#Differential-Testing"><span>Differential Testing</span> </a>
+    </h2>
+<p><span>It quickly became clear that maintaining the logical representation made for an easy way to</span>
+<span>test, as we could compare the results from our chunked approach, to those of a known </span>
+<span>correct datastructure</span>&rsquo;<span>s like the humble </span><code>Vec</code><span>.</span></p>
+<p><span>If we had a </span><code>Vec&lt;Op&gt;</code><span>, then we should be able to iterate through our chunked representation</span>
+<span>and a </span><code>Vec</code><span>, comparing the results after each step to ensure that they are the same.</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">pub</span> <span class="hl-keyword">enum</span> <span class="hl-title class_">Op</span>&lt;T&gt; {</span>
+<span class="line">    <span class="hl-comment">/// The new values</span></span>
+<span class="line">    <span class="hl-title function_ invoke__">Append</span>(<span class="hl-type">Vec</span>&lt;T&gt;),</span>
+<span class="line">    <span class="hl-comment">/// The indexes and new values</span></span>
+<span class="line">    <span class="hl-title function_ invoke__">Splice</span>(<span class="hl-type">Vec</span>&lt;(<span class="hl-type">usize</span>, T)&gt;),</span>
+<span class="line">    <span class="hl-comment">/// The indexes and updated values</span></span>
+<span class="line">    <span class="hl-title function_ invoke__">Update</span>(<span class="hl-type">Vec</span>&lt;(<span class="hl-type">usize</span>, T)&gt;),</span>
+<span class="line">}</span>
+<span class="line"></span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">ops</span>: <span class="hl-type">Vec</span>&lt;Op&lt;<span class="hl-type">i64</span>&gt;&gt; = <span class="hl-title function_ invoke__">generate_random_ops</span>();</span>
+<span class="line"></span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-keyword">mut </span><span class="hl-variable">expected</span> = <span class="hl-type">Vec</span>::&lt;<span class="hl-type">i64</span>&gt;::<span class="hl-title function_ invoke__">new</span>();</span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-keyword">mut </span><span class="hl-variable">actual</span> = ChunkedColumn::&lt;<span class="hl-type">i64</span>&gt;::<span class="hl-title function_ invoke__">new</span>();</span>
+<span class="line"></span>
+<span class="line"><span class="hl-keyword">for</span> <span class="hl-variable">op</span> <span class="hl-keyword">in</span> ops {</span>
+<span class="line">    expected.<span class="hl-title function_ invoke__">apply</span>(op);</span>
+<span class="line">    actual.<span class="hl-title function_ invoke__">apply</span>(op);</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-built_in">assert_eq!</span>(expected, actual.<span class="hl-title function_ invoke__">to_vec</span>());</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+</section>
+<section id="Determistic-fuzzing">
+
+    <h2>
+    <a href="#Determistic-fuzzing"><span>Determistic fuzzing</span> </a>
+    </h2>
+<p><span>Fuzzing allowed us to test a </span><em><span>lot</span></em><span> more edge cases than the unit tests we</span>
+<span>had written prior, which we thought were extensive!</span></p>
+<p><span>By using a given seed, it allowed us t oeasily reproduce any failing test</span>
+<span>cases as new unit tests.</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">const</span> ITERATIONS: <span class="hl-type">usize</span> = <span class="hl-number">100_000</span>;</span>
+<span class="line"></span>
+<span class="line"><span class="hl-keyword">fn</span> <span class="hl-title function_">check</span>(seed: <span class="hl-type">u64</span>) {</span>
+<span class="line">    <span class="hl-comment">// Similar to above, but we pass a PRNG in to our random op generator</span></span>
+<span class="line">    <span class="hl-keyword">let</span> <span class="hl-keyword">mut </span><span class="hl-variable">rng</span> = StdRng::<span class="hl-title function_ invoke__">seed_from_u64</span>(seed);</span>
+<span class="line">    <span class="hl-keyword">let</span> <span class="hl-variable">ops</span>: <span class="hl-type">Vec</span>&lt;Op&lt;<span class="hl-type">i64</span>&gt;&gt; = <span class="hl-title function_ invoke__">generate_random_ops</span>(&amp;<span class="hl-keyword">mut</span> rng);</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-keyword">let</span> <span class="hl-keyword">mut </span><span class="hl-variable">expected</span> = <span class="hl-type">Vec</span>::&lt;<span class="hl-type">i64</span>&gt;::<span class="hl-title function_ invoke__">new</span>();</span>
+<span class="line">    <span class="hl-keyword">let</span> <span class="hl-keyword">mut </span><span class="hl-variable">actual</span> = ChunkedColumn::&lt;<span class="hl-type">i64</span>&gt;::<span class="hl-title function_ invoke__">new</span>();</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-keyword">for</span> <span class="hl-variable">op</span> <span class="hl-keyword">in</span> ops {</span>
+<span class="line">        expected.<span class="hl-title function_ invoke__">apply</span>(op);</span>
+<span class="line">        actual.<span class="hl-title function_ invoke__">apply</span>(op);</span>
+<span class="line"></span>
+<span class="line">        <span class="hl-comment">// And if something fails, we print the seed, allowing us to</span></span>
+<span class="line">        <span class="hl-comment">// quickly and easily reproduce the failing pattern</span></span>
+<span class="line">        <span class="hl-built_in">assert_eq!</span>(expected, actual.<span class="hl-title function_ invoke__">to_vec</span>(), <span class="hl-string">&quot;[seed:{seed}] Mismatch detected: {:#?} vs {:?}&quot;</span>, expected, actual);</span>
+<span class="line">    }</span>
+<span class="line">}</span>
+<span class="line"></span>
+<span class="line"><span class="hl-keyword">for</span> <span class="hl-variable">_</span> <span class="hl-keyword">in</span> <span class="hl-number">0</span>..ITERATIONS {</span>
+<span class="line">    <span class="hl-comment">// Generate a completely random seed for each iteration</span></span>
+<span class="line">    <span class="hl-keyword">let</span> <span class="hl-variable">seed</span>: <span class="hl-type">u64</span> = rand::<span class="hl-title function_ invoke__">random</span>();</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-comment">// Then use that to generate the random ops</span></span>
+<span class="line">    <span class="hl-title function_ invoke__">check</span>(seed);</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+</section>
+<section id="In-closing">
+
+    <h2>
+    <a href="#In-closing"><span>In closing</span> </a>
+    </h2>
+<p><span>The combination of differential testing and determistic fuzzing gave us an</span>
+<span>incredibly high degree of confidence that things were working as they should be.</span></p>
+<p><span>In the first few runs of the fuzzer, when we were still finding new bugs, it gave</span>
+<span>us a wonderfully simple way to reproduce those failing test cases as new unit tests.</span></p>
+</section>
+</article>
+  </main>
+
+  <footer>
+    <p>
+      <a href="https://github.com/tmyers273/blog3/edit/master/content/posts/2025-05-02-my-favorite-test-suite.dj">
+        <svg class="icon"><use href="/assets/icons.svg#edit"/></svg>
+        Fix typo
+      </a>
+      <a href="/feed.xml">
+        <svg class="icon"><use href="/assets/icons.svg#rss"/></svg>
+        Subscribe
+      </a>
+      <a href="https://github.com/tmyers273">
+        <svg class="icon"><use href="/assets/icons.svg#github"/></svg>
+        tmyers273
+      </a>
+    </p>
+  </footer>
+</body>
+
+</html>
