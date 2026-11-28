@@ -1,0 +1,401 @@
+
+<!DOCTYPE html>
+<html lang='en-US'>
+<head>
+  <meta charset='utf-8'>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>List Shrinking</title>
+  <meta name="description" content="Code Link">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://matklad.github.io/2024/07/26/list-shrinking.html">
+  <link rel="alternate" type="application/rss+xml" title="tmyers273" href="https://matklad.github.io/feed.xml">
+  <style>
+  @font-face {
+    font-family: 'Open Sans'; src: url('/css/OpenSans-300-Normal.woff2') format('woff2');
+    font-weight: 300; font-style: normal;
+  }
+  @font-face {
+    font-family: 'JetBrains Mono'; src: url('/css/JetBrainsMono-400-Normal.woff2') format('woff2');
+    font-weight: 400; font-style: normal;
+  }
+  @font-face {
+    font-family: 'JetBrains Mono'; src: url('/css/JetBrainsMono-700-Normal.woff2') format('woff2');
+    font-weight: 700; font-style: normal;
+  }
+  @font-face {
+    font-family: 'EB Garamond'; src: url('/css/EBGaramond-400-Normal.woff2') format('woff2');
+    font-weight: 400; font-style: normal;
+  }
+  @font-face {
+    font-family: 'EB Garamond'; src: url('/css/EBGaramond-400-Italic.woff2') format('woff2');
+    font-weight: 400; font-style: italic;
+  }
+  @font-face {
+    font-family: 'EB Garamond'; src: url('/css/EBGaramond-700-Normal.woff2') format('woff2');
+    font-weight: 700; font-style: normal;
+  }
+  @font-face {
+    font-family: 'EB Garamond'; src: url('/css/EBGaramond-700-Italic.woff2') format('woff2');
+    font-weight: 700; font-style: italic;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; margin-block-start: 0; margin-block-end: 0; }
+
+  body {
+    max-width: 80ch;
+    padding: 2ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  header { margin-bottom: 2rem; }
+  header > nav { display: flex; column-gap: 2ch; align-items: baseline; flex-wrap: wrap; }
+  header a { font-style: normal; color: rgba(0, 0, 0, .8); text-decoration: none; }
+  header a:hover { color: rgba(0, 0, 0, .8); text-decoration: underline; }
+  header .title { font-size: 1.25em; flex-grow: 2; }
+
+  footer { margin-top: 2rem; }
+  footer > p { display: flex; column-gap: 2ch; justify-content: center; flex-wrap: wrap; }
+  footer a { color: rgba(0, 0, 0, .8); text-decoration: none; white-space: nowrap; }
+  footer i { vertical-align: middle; color: rgba(0, 0, 0, .8) }
+
+  </style>
+
+  <link rel="stylesheet" href="/css/main.css">
+  
+</head>
+
+<body>
+  <header>
+    <nav>
+      <a class="title" href="/">tmyers273</a>
+      <a href="/about.html">About</a>
+      <a href="/links.html">Links</a>
+      <a href="/blogroll.html">Blogroll</a>
+    </nav>
+  </header>
+
+  <main>
+  <article >
+
+<h1><span>List Shrinking</span> <time class="meta" datetime="2024-07-26">Jul 26, 2024</time></h1>
+<p><a href="https://github.com/tmyers273/shrink"><span>Code Link</span></a></p>
+<p><span>I</span>&rsquo;<span>ve been working on a conversion process, where we take a large struct </span><code>A</code><span> and, depending on</span>
+<span>various values within it, convert it to either </span><code>B</code><span>, </span><code>C</code><span>, or </span><code>D</code><span>.</span></p>
+<p><span>This data comes from an external source and the documentation leaves a lot to be desired, with</span>
+<span>missing enum variants, incorrect type fields, incorrect nullability, etc.</span></p>
+<p><span>Due to the inaccurate documentation, we lean heavily on our test suite.</span></p>
+<p><span>There are a large number of items (hundreds of millions) that we deal with in this conversion</span>
+<span>process. While we certainly could pull all those items and run them in our tests, I thought</span>
+<span>there might be a better way. One that would minimize the pain of running the tests while</span>
+<span>preserving the same level of confidence.</span></p>
+<p><span>What if we could throw away all the items that are not uniquely interesting? Or are, if you</span>
+<span>squint your eyes, near-duplicates of other items?</span></p>
+<p><span>More concretely, imagine the following struct</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">struct</span> <span class="hl-title class_">MyStruct</span> {</span>
+<span class="line">    a: <span class="hl-type">u8</span>,</span>
+<span class="line">    b: <span class="hl-type">String</span>,</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+<p><span>These two records are, of course, not equal.</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">a</span> = MyStruct { a: <span class="hl-number">1</span>, b: <span class="hl-string">&quot;hello&quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">b</span> = MyStruct { a: <span class="hl-number">2</span>, b: <span class="hl-string">&quot;hello world&quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span></code></pre>
+
+</figure>
+<p><span>But, in the conversion process, we wanted to treat them as equal. They both contain a positive,</span>
+<span>non-max integer and a non-empty, non-whitespace string. If one of them converts successfully,</span>
+<span>then the other will as well.</span></p>
+<p><span>What I really was after was a way extract just the meaningfully unique items. So what exactly</span>
+<span>is a meaningfully unique item?</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-comment">// A positive int is one type</span></span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">a</span> = MyStruct { a: <span class="hl-number">1</span>, b: <span class="hl-string">&quot;hello&quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span>
+<span class="line"></span>
+<span class="line"><span class="hl-comment">// 0 is another interesting one</span></span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">b</span> = MyStruct { a: <span class="hl-number">0</span>, b: <span class="hl-string">&quot;hello world&quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span>
+<span class="line"></span>
+<span class="line"><span class="hl-comment">// Along with the max value</span></span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">c</span> = MyStruct { a: <span class="hl-type">u8</span>::MAX, b: <span class="hl-string">&quot;hello world&quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span>
+<span class="line"></span>
+<span class="line"><span class="hl-comment">// Or an empty string</span></span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">c</span> = MyStruct { a: <span class="hl-number">1</span>, b: <span class="hl-string">&quot;&quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span>
+<span class="line"></span>
+<span class="line"><span class="hl-comment">// Or a string of just whitespace</span></span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">c</span> = MyStruct { a: <span class="hl-number">1</span>, b: <span class="hl-string">&quot;   &quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span></code></pre>
+
+</figure>
+<p><span>That allows us to start to pencil in some basic rules and some enums to represent them.</span></p>
+<section id="Strings">
+
+    <h2>
+    <a href="#Strings"><span>Strings</span> </a>
+    </h2>
+<p><span>Perhaps the simplest case. There are only a few interesting strings that we care about:</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">enum</span> <span class="hl-title class_">StringClassification</span> {</span>
+<span class="line">    Empty,</span>
+<span class="line">    Whitespace,</span>
+<span class="line">    NonEmpty,</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+</section>
+<section id="Integers">
+
+    <h2>
+    <a href="#Integers"><span>Integers</span> </a>
+    </h2>
+<p><span>Integers have a few more options.</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">enum</span> <span class="hl-title class_">SignedIntClassification</span> {</span>
+<span class="line">    Min,</span>
+<span class="line">    Negative,</span>
+<span class="line">    Zero,</span>
+<span class="line">    Positive,</span>
+<span class="line">    Max,</span>
+<span class="line">}</span>
+<span class="line"></span>
+<span class="line"><span class="hl-keyword">enum</span> <span class="hl-title class_">UnsignedIntClassification</span> {</span>
+<span class="line">    Zero,</span>
+<span class="line">    Positive,</span>
+<span class="line">    Max,</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+</section>
+<section id="Tying-it-together">
+
+    <h2>
+    <a href="#Tying-it-together"><span>Tying it together</span> </a>
+    </h2>
+<p><span>Let</span>&rsquo;<span>s introduce a trait.</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">trait</span> <span class="hl-title class_">Classify</span> {</span>
+<span class="line">    <span class="hl-keyword">type</span> <span class="hl-title class_">Output</span>: Hash;</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-keyword">fn</span> <span class="hl-title function_">classify</span>(&amp;<span class="hl-keyword">self</span>) <span class="hl-punctuation">-&gt;</span> <span class="hl-keyword">Self</span>::Output;</span>
+<span class="line">}</span>
+<span class="line"></span>
+<span class="line"><span class="hl-keyword">impl</span> <span class="hl-title class_">Classify</span> <span class="hl-keyword">for</span> <span class="hl-title class_">u8</span> {</span>
+<span class="line">    <span class="hl-keyword">type</span> <span class="hl-title class_">Output</span> = UnsignedIntClassification;</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-keyword">fn</span> <span class="hl-title function_">classify</span>(&amp;<span class="hl-keyword">self</span>) <span class="hl-punctuation">-&gt;</span> <span class="hl-keyword">Self</span>::Output {</span>
+<span class="line">        <span class="hl-keyword">match</span> <span class="hl-keyword">self</span> {</span>
+<span class="line">            <span class="hl-number">0</span> =&gt; UnsignedIntClassification::Zero,</span>
+<span class="line">            <span class="hl-type">u8</span>::MAX =&gt; UnsignedIntClassification::Max,</span>
+<span class="line">            _ =&gt; UnsignedIntClassification::Positive,</span>
+<span class="line">        }</span>
+<span class="line">    }</span>
+<span class="line">}</span>
+<span class="line"></span>
+<span class="line"><span class="hl-keyword">impl</span> <span class="hl-title class_">Classify</span> <span class="hl-keyword">for</span> <span class="hl-title class_">String</span> {</span>
+<span class="line">    <span class="hl-keyword">type</span> <span class="hl-title class_">Output</span> = StringClassification;</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-keyword">fn</span> <span class="hl-title function_">classify</span>(&amp;<span class="hl-keyword">self</span>) <span class="hl-punctuation">-&gt;</span> <span class="hl-keyword">Self</span>::Output {</span>
+<span class="line">        <span class="hl-keyword">match</span> <span class="hl-keyword">self</span>.<span class="hl-title function_ invoke__">as_str</span>() {</span>
+<span class="line">            <span class="hl-string">&quot;&quot;</span> =&gt; StringClassification::Empty,</span>
+<span class="line">            s <span class="hl-keyword">if</span> s.<span class="hl-title function_ invoke__">chars</span>().<span class="hl-title function_ invoke__">all</span>(<span class="hl-type">char</span>::is_whitespace) =&gt; StringClassification::Whitespace,</span>
+<span class="line">            _ =&gt; StringClassification::NonEmpty,</span>
+<span class="line">        }</span>
+<span class="line">    }</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+<p><span>That let</span>&rsquo;<span>s us classify some primitives, which is a start. But how do we classify the structs</span>
+<span>we introduced earlier?</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">a</span> = MyStruct { a: <span class="hl-number">1</span>, b: <span class="hl-string">&quot;hello&quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">b</span> = MyStruct { a: <span class="hl-number">2</span>, b: <span class="hl-string">&quot;hello world&quot;</span>.<span class="hl-title function_ invoke__">to_string</span>() };</span></code></pre>
+
+</figure>
+<p><span>While we certainly could return a tuple of</span></p>
+<p><code>(UnsignedIntClassification, StringClassification)</code></p>
+<p><span>that approach doesn</span>&rsquo;<span>t scale well. The large struct </span><code>A</code><span> has 20 some fields and, more importantly,</span>
+<span>has nested fields, for a total of 60+ fields.</span></p>
+<p><span>If we make sure that our base enum classification types implement </span><code>Hash</code><span>, we can use that to</span>
+<span>hash the classifications of the fields, giving us some really nice compositional properties.</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">impl</span> <span class="hl-title class_">Classify</span> <span class="hl-keyword">for</span> <span class="hl-title class_">MyStruct</span> {</span>
+<span class="line">    <span class="hl-keyword">type</span> <span class="hl-title class_">Output</span> = <span class="hl-type">u64</span>;</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-keyword">fn</span> <span class="hl-title function_">classify</span>(&amp;<span class="hl-keyword">self</span>) <span class="hl-punctuation">-&gt;</span> <span class="hl-keyword">Self</span>::Output {</span>
+<span class="line">        <span class="hl-keyword">let</span> <span class="hl-keyword">mut </span><span class="hl-variable">hasher</span> = DefaultHasher::<span class="hl-title function_ invoke__">new</span>();</span>
+<span class="line">        &amp;<span class="hl-keyword">self</span>.a.<span class="hl-title function_ invoke__">classify</span>().<span class="hl-title function_ invoke__">hash</span>(&amp;<span class="hl-keyword">mut</span> hasher);</span>
+<span class="line">        &amp;<span class="hl-keyword">self</span>.b.<span class="hl-title function_ invoke__">classify</span>().<span class="hl-title function_ invoke__">hash</span>(&amp;<span class="hl-keyword">mut</span> hasher);</span>
+<span class="line">        hasher.<span class="hl-title function_ invoke__">finish</span>()</span>
+<span class="line">    }</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+</section>
+<section id="More-complex-structs">
+
+    <h2>
+    <a href="#More-complex-structs"><span>More complex structs</span> </a>
+    </h2>
+<p><span>That gets things working for our simple example, but what about something with some more</span>
+<span>complexity? Perhaps a struct like</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">struct</span> <span class="hl-title class_">ComplexStruct</span> {</span>
+<span class="line">    a: <span class="hl-type">Option</span>&lt;<span class="hl-type">u8</span>&gt;,</span>
+<span class="line">    b: <span class="hl-type">Vec</span>&lt;<span class="hl-type">String</span>&gt;,</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+<section id="Options">
+
+    <h3>
+    <a href="#Options"><span>Options</span> </a>
+    </h3>
+<p><span>Options can be thought of as just adding an additional </span><code>None</code><span> variant to the classification.</span></p>
+</section>
+<section id="Vecs-arrays-and-slices">
+
+    <h3>
+    <a href="#Vecs-arrays-and-slices"><span>Vecs, arrays, and slices</span> </a>
+    </h3>
+<p><span>This is where things get a bit more interesting. We want a classification that is order-independent</span>
+<span>and doesn</span>&rsquo;<span>t care about duplicates.</span></p>
+<p><span>We can accomplish that be classifying each element. Then, removing any duplicates and sorting the</span>
+<span>remaining elements.</span></p>
+<p><span>This allows something like the following to be true:</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">a</span> = <span class="hl-built_in">vec!</span>[<span class="hl-number">1u8</span>, <span class="hl-number">0</span>];</span>
+<span class="line"><span class="hl-keyword">let</span> <span class="hl-variable">b</span> = <span class="hl-built_in">vec!</span>[<span class="hl-number">0u8</span>, <span class="hl-number">5</span>, <span class="hl-number">6</span>];</span>
+<span class="line"><span class="hl-built_in">assert_eq!</span>(a.<span class="hl-title function_ invoke__">classify</span>(), b.<span class="hl-title function_ invoke__">classify</span>());</span></code></pre>
+
+</figure>
+<p><span>A BTreeSet does the heavy lifting for us here.</span></p>
+
+<figure class="code-block">
+
+
+<pre><code><span class="line"><span class="hl-keyword">impl</span>&lt;T: Classify&gt; Classify <span class="hl-keyword">for</span> <span class="hl-title class_">Vec</span>&lt;T&gt;</span>
+<span class="line"><span class="hl-keyword">where</span></span>
+<span class="line">    T::Output: Hash + <span class="hl-built_in">Eq</span> + <span class="hl-built_in">Ord</span>,</span>
+<span class="line">{</span>
+<span class="line">    <span class="hl-keyword">type</span> <span class="hl-title class_">Output</span> = <span class="hl-type">u64</span>;</span>
+<span class="line"></span>
+<span class="line">    <span class="hl-keyword">fn</span> <span class="hl-title function_">classify</span>(&amp;<span class="hl-keyword">self</span>) <span class="hl-punctuation">-&gt;</span> <span class="hl-keyword">Self</span>::Output {</span>
+<span class="line">        <span class="hl-keyword">let</span> <span class="hl-variable">unique_classifications</span> = BTreeSet::<span class="hl-title function_ invoke__">default</span>();</span>
+<span class="line">        <span class="hl-keyword">for</span> <span class="hl-variable">item</span> <span class="hl-keyword">in</span> &amp;<span class="hl-keyword">self</span> {</span>
+<span class="line">            unique_classifications.<span class="hl-title function_ invoke__">insert</span>(item.<span class="hl-title function_ invoke__">classify</span>());</span>
+<span class="line">        }</span>
+<span class="line"></span>
+<span class="line">        <span class="hl-keyword">let</span> <span class="hl-keyword">mut </span><span class="hl-variable">hasher</span> = DefaultHasher::<span class="hl-title function_ invoke__">new</span>();</span>
+<span class="line">        <span class="hl-keyword">for</span> <span class="hl-variable">classification</span> <span class="hl-keyword">in</span> unique_classifications {</span>
+<span class="line">            classification.<span class="hl-title function_ invoke__">hash</span>(&amp;<span class="hl-keyword">mut</span> hasher);</span>
+<span class="line">        }</span>
+<span class="line">        hasher.<span class="hl-title function_ invoke__">finish</span>()</span>
+<span class="line">    }</span>
+<span class="line">}</span></code></pre>
+
+</figure>
+<p><span>But, it does fail to capture an important property of the vec. We really would like to capture</span>
+<span>whether the vec:</span></p>
+<ul>
+<li>
+<span>is empty,</span>
+</li>
+<li>
+<span>contains a single element, or</span>
+</li>
+<li>
+<span>contains multiple elements</span>
+</li>
+</ul>
+<p><span>That remains an item for a different day.</span></p>
+</section>
+</section>
+<section id="Results">
+
+    <h2>
+    <a href="#Results"><span>Results</span> </a>
+    </h2>
+<p><span>We have a few different datasets in which we employ this pattern and the results have been</span>
+<span>very successful. We are able to keep a gzipped version of the dataset in our repository to</span>
+<span>use in our tests.</span></p>
+<table>
+<tr>
+<th><span>Dataset</span></th>
+<th style="text-align: right;"><span>Meaningfully Unique Items</span></th>
+<th style="text-align: right;"><span>Total Items</span></th>
+</tr>
+<tr>
+<td><span>First</span></td>
+<td style="text-align: right;"><span>620</span></td>
+<td style="text-align: right;"><span>40,000</span></td>
+</tr>
+<tr>
+<td><span>Second</span></td>
+<td style="text-align: right;"><span>172</span></td>
+<td style="text-align: right;"><span>50,000</span></td>
+</tr>
+<tr>
+<td><span>Third</span></td>
+<td style="text-align: right;"><span>681</span></td>
+<td style="text-align: right;"><span>700,000</span></td>
+</tr>
+<tr>
+<td><span>Fourth</span></td>
+<td style="text-align: right;"><span>3,876</span></td>
+<td style="text-align: right;"><span>175,000,000</span></td>
+</tr>
+</table>
+</section>
+</article>
+  </main>
+
+  <footer>
+    <p>
+      <a href="https://github.com/tmyers273/blog3/edit/master/content/posts/2024-07-26-list-shrinking.dj">
+        <svg class="icon"><use href="/assets/icons.svg#edit"/></svg>
+        Fix typo
+      </a>
+      <a href="/feed.xml">
+        <svg class="icon"><use href="/assets/icons.svg#rss"/></svg>
+        Subscribe
+      </a>
+      <a href="https://github.com/tmyers273">
+        <svg class="icon"><use href="/assets/icons.svg#github"/></svg>
+        tmyers273
+      </a>
+    </p>
+  </footer>
+</body>
+
+</html>
